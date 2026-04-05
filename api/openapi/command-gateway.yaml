@@ -1,0 +1,709 @@
+openapi: 3.1.0
+info:
+  title: Solo Level Master Command Gateway
+  version: 0.3.0
+  description: |
+    Phase 0 + Phase 1 + Phase 2 scaffold for production-safe command processing.
+    Write surfaces accept command DTOs only.
+servers:
+  - url: https://api.example.com
+paths:
+  /v1/auth/session/refresh:
+    post:
+      summary: Refresh session token (offline-capable policy)
+      operationId: refreshSession
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SessionRefreshRequest'
+      responses:
+        '200':
+          description: Session refreshed
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionRefreshResponse'
+        '401':
+          description: Invalid refresh token
+
+  /v1/commands:
+    post:
+      summary: Submit a domain command (write-only endpoint)
+      operationId: submitCommand
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DomainCommandRequest'
+      responses:
+        '202':
+          description: Command accepted for processing
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+        '409':
+          description: Idempotency conflict (hash mismatch)
+        '422':
+          description: Validation failure
+
+  /v1/commands/{commandId}:
+    get:
+      summary: Fetch command processing status
+      operationId: getCommandStatus
+      parameters:
+        - in: path
+          name: commandId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current command execution state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandStatus'
+
+  /v1/progression/commands/grant-xp:
+    post:
+      summary: Grant XP to an actor profile
+      operationId: grantXp
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GrantXpCommand'
+      responses:
+        '202':
+          description: XP grant command accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+        '409':
+          description: Idempotency conflict
+        '422':
+          description: Validation failure
+
+  /v1/progression/commands/adjust-stat:
+    post:
+      summary: Adjust a stat value (base/buff/debuff)
+      operationId: adjustStat
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AdjustStatCommand'
+      responses:
+        '202':
+          description: Stat adjustment accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+
+  /v1/progression/commands/promote-rank:
+    post:
+      summary: Promote rank tier for an actor profile
+      operationId: promoteRank
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PromoteRankCommand'
+      responses:
+        '202':
+          description: Rank promotion accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+
+  /v1/actions/captures:
+    post:
+      summary: Offline-first action capture ingestion
+      operationId: captureAction
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionCaptureRequest'
+      responses:
+        '202':
+          description: Action capture accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionCaptureAccepted'
+
+  /v1/actions/commands/resolve-to-progression:
+    post:
+      summary: Resolve validated action into progression command(s)
+      operationId: resolveActionToProgression
+      parameters:
+        - in: header
+          name: Idempotency-Key
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ResolveActionToProgressionCommand'
+      responses:
+        '202':
+          description: Resolution command accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+
+  /v1/read-model/profile/{userId}:
+    get:
+      summary: Read-model scaffold for profile HUD
+      operationId: getProfileHud
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Projected profile view
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileHudView'
+
+  /v1/read-model/progression/{actorProfileId}:
+    get:
+      summary: Current XP/level/rank/stats for profile
+      operationId: getCurrentProgression
+      parameters:
+        - in: path
+          name: actorProfileId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Current progression state
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentProgressionView'
+
+  /v1/read-model/progression/{actorProfileId}/deltas:
+    get:
+      summary: Timeline of XP/stat/rank deltas
+      operationId: getProgressionDeltaTimeline
+      parameters:
+        - in: path
+          name: actorProfileId
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - in: query
+          name: cursor
+          schema:
+            type: string
+        - in: query
+          name: limit
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+            default: 50
+      responses:
+        '200':
+          description: Progression delta timeline page
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeltaTimelinePage'
+
+  /v1/read-model/actions/inbox/{userId}:
+    get:
+      summary: Action inbox for pending validation/review
+      operationId: getActionInbox
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Action inbox projection
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionInboxPage'
+
+  /v1/read-model/actions/results/{userId}:
+    get:
+      summary: Resolved action result cards (accepted/rejected/partial)
+      operationId: getActionResults
+      parameters:
+        - in: path
+          name: userId
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Action result cards
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ActionResultPage'
+
+  /v1/internal/actions/{actionCaptureId}/override:
+    post:
+      summary: Admin/internal manual review override
+      operationId: overrideActionResolution
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ActionOverrideRequest'
+      responses:
+        '202':
+          description: Override accepted
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DomainCommandAccepted'
+
+components:
+  schemas:
+    DomainCommandRequest:
+      type: object
+      required: [commandType, aggregateType, aggregateId, payload]
+      properties:
+        commandType:
+          type: string
+        aggregateType:
+          type: string
+        aggregateId:
+          type: string
+          format: uuid
+        correlationId:
+          type: string
+          format: uuid
+        causationId:
+          type: string
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+
+    GrantXpCommand:
+      type: object
+      required: [actorProfileId, deltaXp, sourceRef]
+      properties:
+        actorProfileId:
+          type: string
+          format: uuid
+        deltaXp:
+          type: integer
+        sourceRef:
+          type: string
+        reason:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+
+    AdjustStatCommand:
+      type: object
+      required: [actorProfileId, statKey, deltaType, deltaValue]
+      properties:
+        actorProfileId:
+          type: string
+          format: uuid
+        statKey:
+          type: string
+        deltaType:
+          type: string
+          enum: [base, buff, debuff]
+        deltaValue:
+          type: number
+        reason:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+
+    PromoteRankCommand:
+      type: object
+      required: [actorProfileId, targetTierCode]
+      properties:
+        actorProfileId:
+          type: string
+          format: uuid
+        targetTierCode:
+          type: string
+        reason:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+
+    ActionCaptureRequest:
+      type: object
+      required: [userId, sourceType, actionType, capturedAt, payload, dedupFingerprint]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        actorProfileId:
+          type: string
+          format: uuid
+        sourceType:
+          type: string
+        sourceDeviceId:
+          type: string
+        sourceEventId:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+        actionType:
+          type: string
+        payload:
+          type: object
+          additionalProperties: true
+        dedupFingerprint:
+          type: string
+        evidence:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionEvidenceInput'
+        correlationId:
+          type: string
+          format: uuid
+
+    ActionEvidenceInput:
+      type: object
+      required: [evidenceType]
+      properties:
+        evidenceType:
+          type: string
+        evidenceUri:
+          type: string
+        evidenceHash:
+          type: string
+        sensorTime:
+          type: string
+          format: date-time
+        geoLat:
+          type: number
+        geoLng:
+          type: number
+        geoAccuracyM:
+          type: number
+        metadata:
+          type: object
+          additionalProperties: true
+
+    ResolveActionToProgressionCommand:
+      type: object
+      required: [actionCaptureId, resolution]
+      properties:
+        actionCaptureId:
+          type: string
+          format: uuid
+        resolution:
+          type: string
+          enum: [accepted, rejected, partial]
+        awardedXp:
+          type: integer
+        awardedStatDeltas:
+          type: object
+          additionalProperties: true
+        reasonCodes:
+          type: array
+          items:
+            type: string
+        explainability:
+          type: object
+          additionalProperties: true
+        correlationId:
+          type: string
+          format: uuid
+
+    ActionOverrideRequest:
+      type: object
+      required: [resolution, reason]
+      properties:
+        resolution:
+          type: string
+          enum: [accepted, rejected, partial]
+        reason:
+          type: string
+        awardedXp:
+          type: integer
+        awardedStatDeltas:
+          type: object
+          additionalProperties: true
+
+    ActionCaptureAccepted:
+      type: object
+      required: [actionCaptureId, status, receivedAt]
+      properties:
+        actionCaptureId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [received]
+        receivedAt:
+          type: string
+          format: date-time
+
+    DomainCommandAccepted:
+      type: object
+      required: [commandId, status, receivedAt]
+      properties:
+        commandId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted]
+        receivedAt:
+          type: string
+          format: date-time
+
+    DomainCommandStatus:
+      type: object
+      required: [commandId, status]
+      properties:
+        commandId:
+          type: string
+          format: uuid
+        status:
+          type: string
+          enum: [accepted, rejected, executed, failed]
+        validationErrors:
+          type: array
+          items:
+            type: string
+
+    SessionRefreshRequest:
+      type: object
+      required: [refreshToken, deviceId]
+      properties:
+        refreshToken:
+          type: string
+        deviceId:
+          type: string
+        offlineWindowMinutes:
+          type: integer
+          minimum: 1
+          maximum: 10080
+          default: 1440
+
+    SessionRefreshResponse:
+      type: object
+      required: [accessToken, expiresAt, refreshToken]
+      properties:
+        accessToken:
+          type: string
+        expiresAt:
+          type: string
+          format: date-time
+        refreshToken:
+          type: string
+        refreshExpiresAt:
+          type: string
+          format: date-time
+
+    ProfileHudView:
+      type: object
+      required: [userId, displayName, level, syncStatus]
+      properties:
+        userId:
+          type: string
+          format: uuid
+        displayName:
+          type: string
+        level:
+          type: integer
+        syncStatus:
+          type: string
+          enum: [synced, syncing, offline]
+
+    StatRow:
+      type: object
+      required: [statKey, baseValue, buffValue, debuffValue, finalValue]
+      properties:
+        statKey:
+          type: string
+        baseValue:
+          type: number
+        buffValue:
+          type: number
+        debuffValue:
+          type: number
+        finalValue:
+          type: number
+
+    CurrentProgressionView:
+      type: object
+      required: [actorProfileId, totalXp, level, xpIntoLevel, xpToNextLevel, rankTierCode, stats]
+      properties:
+        actorProfileId:
+          type: string
+          format: uuid
+        totalXp:
+          type: integer
+        level:
+          type: integer
+        xpIntoLevel:
+          type: integer
+        xpToNextLevel:
+          type: integer
+        rankTierCode:
+          type: string
+        stats:
+          type: array
+          items:
+            $ref: '#/components/schemas/StatRow'
+
+    DeltaTimelineItem:
+      type: object
+      required: [timestamp, deltaKind, causeType, correlationId, payload]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        deltaKind:
+          type: string
+          enum: [xp, stat, rank]
+        causeType:
+          type: string
+        correlationId:
+          type: string
+          format: uuid
+        payload:
+          type: object
+          additionalProperties: true
+
+    DeltaTimelinePage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/DeltaTimelineItem'
+        nextCursor:
+          type: string
+
+    ActionInboxItem:
+      type: object
+      required: [actionCaptureId, actionType, capturedAt, ingestStatus]
+      properties:
+        actionCaptureId:
+          type: string
+          format: uuid
+        actionType:
+          type: string
+        capturedAt:
+          type: string
+          format: date-time
+        ingestStatus:
+          type: string
+        confidenceScore:
+          type: number
+        fraudScore:
+          type: number
+
+    ActionInboxPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionInboxItem'
+
+    ActionResultCard:
+      type: object
+      required: [actionCaptureId, resolution, resolvedAt, explainability]
+      properties:
+        actionCaptureId:
+          type: string
+          format: uuid
+        resolution:
+          type: string
+          enum: [accepted, rejected, partial]
+        resolvedAt:
+          type: string
+          format: date-time
+        reasonCodes:
+          type: array
+          items:
+            type: string
+        explainability:
+          type: object
+          additionalProperties: true
+
+    ActionResultPage:
+      type: object
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/ActionResultCard'
